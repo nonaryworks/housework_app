@@ -224,8 +224,9 @@ let ST = JSON.parse(localStorage.getItem('hwApp4') || 'null') || {
 };
 function save() { try { localStorage.setItem('hwApp4', JSON.stringify(ST)); } catch(e){} }
 
-let mT = { interval: null, sec: 0, goalSec: 30*60, running: false };
-let hT = { interval: null, sec: 0, goalSec: 22*60, running: false, task: '洗濯干す' };
+// スリープ対応タイマー：startTimeを記録して経過時間を計算
+let mT = { interval: null, goalSec: 30*60, running: false, startTime: null };
+let hT = { interval: null, goalSec: 22*60, running: false, startTime: null, task: '洗濯干す' };
 let weekOffset = 0;
 
 function switchTab(t) {
@@ -239,7 +240,11 @@ function fmtTime(s) {
   return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
 }
 function todayKey() { return new Date().toISOString().split('T')[0]; }
+function elapsedSec(startTime) {
+  return Math.floor((Date.now() - startTime) / 1000);
+}
 
+/* === 朝タイマー === */
 function updateMorningGoal() {
   const v = parseInt(document.getElementById('morning-goal-slider').value);
   mT.goalSec = v * 60;
@@ -247,39 +252,56 @@ function updateMorningGoal() {
   if(!mT.running) document.getElementById('morning-timer-status').textContent = '目標: ' + v + '分以内';
 }
 function updateMorningUI() {
-  document.getElementById('morning-timer-display').textContent = fmtTime(mT.sec);
+  const sec = mT.running ? elapsedSec(mT.startTime) : 0;
+  document.getElementById('morning-timer-display').textContent = fmtTime(sec);
   const bar = document.getElementById('morning-timer-bar');
-  bar.style.width = Math.min(mT.sec/mT.goalSec*100, 100) + '%';
-  bar.classList.toggle('over', mT.sec > mT.goalSec);
-  if(mT.sec > mT.goalSec) document.getElementById('morning-timer-status').textContent = '⚠️ 超過 +' + fmtTime(mT.sec - mT.goalSec);
+  bar.style.width = Math.min(sec / mT.goalSec * 100, 100) + '%';
+  bar.classList.toggle('over', sec > mT.goalSec);
+  if(sec > mT.goalSec) {
+    document.getElementById('morning-timer-status').textContent = '⚠️ 超過 +' + fmtTime(sec - mT.goalSec);
+  }
 }
 function startMorningTimer() {
   if(mT.running) return;
   mT.running = true;
+  mT.startTime = Date.now();
+  localStorage.setItem('mT_start', mT.startTime);
+  localStorage.setItem('mT_goal', mT.goalSec);
   document.getElementById('morning-btn-start').style.display = 'none';
   document.getElementById('morning-btn-stop').style.display = 'flex';
-  mT.interval = setInterval(() => { mT.sec++; updateMorningUI(); }, 1000);
+  mT.interval = setInterval(updateMorningUI, 1000);
 }
 function stopMorningTimer() {
   if(!mT.running) return;
   clearInterval(mT.interval); mT.running = false;
+  const sec = elapsedSec(mT.startTime);
+  localStorage.removeItem('mT_start');
+  localStorage.removeItem('mT_goal');
   document.getElementById('morning-btn-start').style.display = 'flex';
   document.getElementById('morning-btn-stop').style.display = 'none';
-  const won = mT.sec <= mT.goalSec;
+  document.getElementById('morning-timer-display').textContent = fmtTime(0);
+  document.getElementById('morning-timer-bar').style.width = '0%';
+  document.getElementById('morning-timer-bar').classList.remove('over');
+  document.getElementById('morning-timer-status').textContent = '目標: ' + Math.round(mT.goalSec/60) + '分以内';
+  const won = sec <= mT.goalSec;
   const all = ST.todos.filter(x => x.date === todayKey());
-  ST.logs.push({ date: new Date().toISOString(), task: '朝の家事', sec: mT.sec, goalSec: mT.goalSec, won, todoTotal: all.length, todoDone: all.filter(x=>x.done).length });
+  ST.logs.push({ date: new Date().toISOString(), task: '朝の家事', sec, goalSec: mT.goalSec, won, todoTotal: all.length, todoDone: all.filter(x=>x.done).length });
   if(won) { ST.hearts++; flashGreen('morning-timer-display'); }
   save(); renderHearts();
 }
 function resetMorningTimer() {
-  clearInterval(mT.interval); mT.running = false; mT.sec = 0;
+  clearInterval(mT.interval); mT.running = false; mT.startTime = null;
+  localStorage.removeItem('mT_start');
+  localStorage.removeItem('mT_goal');
   document.getElementById('morning-btn-start').style.display = 'flex';
   document.getElementById('morning-btn-stop').style.display = 'none';
   document.getElementById('morning-timer-bar').classList.remove('over');
   document.getElementById('morning-timer-status').textContent = '目標: ' + Math.round(mT.goalSec/60) + '分以内';
-  updateMorningUI();
+  document.getElementById('morning-timer-display').textContent = '00:00';
+  document.getElementById('morning-timer-bar').style.width = '0%';
 }
 
+/* === 家事タイマー === */
 function selectTask(el, name) {
   document.querySelectorAll('.task-card').forEach(c => c.classList.remove('selected'));
   el.classList.add('selected'); hT.task = name;
@@ -291,41 +313,92 @@ function updateHwGoal() {
   if(!hT.running) document.getElementById('hw-timer-status').textContent = '目標: ' + v + '分以内';
 }
 function updateHwUI() {
-  document.getElementById('hw-timer-display').textContent = fmtTime(hT.sec);
+  const sec = hT.running ? elapsedSec(hT.startTime) : 0;
+  document.getElementById('hw-timer-display').textContent = fmtTime(sec);
   const bar = document.getElementById('hw-timer-bar');
-  bar.style.width = Math.min(hT.sec/hT.goalSec*100, 100) + '%';
-  bar.classList.toggle('over', hT.sec > hT.goalSec);
-  if(hT.sec > hT.goalSec) document.getElementById('hw-timer-status').textContent = '⚠️ 超過 +' + fmtTime(hT.sec - hT.goalSec);
+  bar.style.width = Math.min(sec / hT.goalSec * 100, 100) + '%';
+  bar.classList.toggle('over', sec > hT.goalSec);
+  if(sec > hT.goalSec) {
+    document.getElementById('hw-timer-status').textContent = '⚠️ 超過 +' + fmtTime(sec - hT.goalSec);
+  }
 }
 function startHwTimer() {
   if(hT.running) return;
   hT.running = true;
+  hT.startTime = Date.now();
+  localStorage.setItem('hT_start', hT.startTime);
+  localStorage.setItem('hT_goal', hT.goalSec);
+  localStorage.setItem('hT_task', hT.task);
   document.getElementById('hw-btn-start').style.display = 'none';
   document.getElementById('hw-btn-stop').style.display = 'flex';
-  hT.interval = setInterval(() => { hT.sec++; updateHwUI(); }, 1000);
+  hT.interval = setInterval(updateHwUI, 1000);
 }
 function stopHwTimer() {
   if(!hT.running) return;
   clearInterval(hT.interval); hT.running = false;
+  const sec = elapsedSec(hT.startTime);
+  localStorage.removeItem('hT_start');
+  localStorage.removeItem('hT_goal');
+  localStorage.removeItem('hT_task');
   document.getElementById('hw-btn-start').style.display = 'flex';
   document.getElementById('hw-btn-stop').style.display = 'none';
-  const won = hT.sec <= hT.goalSec;
-  ST.logs.push({ date: new Date().toISOString(), task: hT.task, sec: hT.sec, goalSec: hT.goalSec, won });
+  document.getElementById('hw-timer-display').textContent = fmtTime(0);
+  document.getElementById('hw-timer-bar').style.width = '0%';
+  document.getElementById('hw-timer-bar').classList.remove('over');
+  document.getElementById('hw-timer-status').textContent = '目標: ' + Math.round(hT.goalSec/60) + '分以内';
+  const won = sec <= hT.goalSec;
+  ST.logs.push({ date: new Date().toISOString(), task: hT.task, sec, goalSec: hT.goalSec, won });
   if(won) { ST.hearts++; flashGreen('hw-timer-display'); }
   save(); renderHearts();
 }
 function resetHwTimer() {
-  clearInterval(hT.interval); hT.running = false; hT.sec = 0;
+  clearInterval(hT.interval); hT.running = false; hT.startTime = null;
+  localStorage.removeItem('hT_start');
+  localStorage.removeItem('hT_goal');
+  localStorage.removeItem('hT_task');
   document.getElementById('hw-btn-start').style.display = 'flex';
   document.getElementById('hw-btn-stop').style.display = 'none';
   document.getElementById('hw-timer-bar').classList.remove('over');
   document.getElementById('hw-timer-status').textContent = '目標: ' + Math.round(hT.goalSec/60) + '分以内';
-  updateHwUI();
+  document.getElementById('hw-timer-display').textContent = '00:00';
+  document.getElementById('hw-timer-bar').style.width = '0%';
 }
 function flashGreen(id) {
   const el = document.getElementById(id);
   el.style.color = '#1D9E75';
   setTimeout(() => { el.style.color = ''; }, 1500);
+}
+
+// ページ再表示時にタイマーを復元
+function restoreTimers() {
+  const mStart = localStorage.getItem('mT_start');
+  const mGoal = localStorage.getItem('mT_goal');
+  if(mStart && mGoal) {
+    mT.startTime = parseInt(mStart);
+    mT.goalSec = parseInt(mGoal);
+    mT.running = true;
+    document.getElementById('morning-goal-slider').value = Math.round(mT.goalSec/60);
+    document.getElementById('morning-goal-display').textContent = Math.round(mT.goalSec/60) + '分';
+    document.getElementById('morning-btn-start').style.display = 'none';
+    document.getElementById('morning-btn-stop').style.display = 'flex';
+    mT.interval = setInterval(updateMorningUI, 1000);
+    updateMorningUI();
+  }
+  const hStart = localStorage.getItem('hT_start');
+  const hGoal = localStorage.getItem('hT_goal');
+  const hTask = localStorage.getItem('hT_task');
+  if(hStart && hGoal) {
+    hT.startTime = parseInt(hStart);
+    hT.goalSec = parseInt(hGoal);
+    hT.task = hTask || '洗濯干す';
+    hT.running = true;
+    document.getElementById('hw-goal-slider').value = Math.round(hT.goalSec/60);
+    document.getElementById('hw-goal-display').textContent = Math.round(hT.goalSec/60) + '分';
+    document.getElementById('hw-btn-start').style.display = 'none';
+    document.getElementById('hw-btn-stop').style.display = 'flex';
+    hT.interval = setInterval(updateHwUI, 1000);
+    updateHwUI();
+  }
 }
 
 const QUICK_TASKS = ['パパ弁当','のん弁当','水筒','洗濯回す','食洗機空ける','パパ🍞','炊飯器set','宿題check'];
@@ -435,7 +508,8 @@ function renderHistory() {
 
 document.getElementById('goal-hearts').value = ST.goalHearts;
 document.getElementById('reward-text').value = ST.rewardText;
-renderTodos(); renderHearts(); updateMorningUI(); updateHwUI();
+renderTodos(); renderHearts();
+restoreTimers();
 </script>
 </body>
 </html>
