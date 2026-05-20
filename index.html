@@ -158,6 +158,7 @@ body { background: #f5f4f0; font-family: -apple-system, BlinkMacSystemFont, 'Hir
       <button class="qtag" onclick="addMorningTodo('炊飯器set')">炊飯器set</button>
       <button class="qtag" onclick="addMorningTodo('宿題check')">宿題check</button>
       <button class="qtag" onclick="addMorningTodo('パパコーヒー')">パパコーヒー</button>
+      <button class="qtag" onclick="addMorningTodo('🚲移動して新聞')">🚲移動して新聞</button>
     </div>
     <div class="todo-input-row">
       <input type="text" id="morning-new-todo" placeholder="追加する家事を入力..." onkeydown="if(event.key==='Enter')addMorningTodo()">
@@ -198,20 +199,6 @@ body { background: #f5f4f0; font-family: -apple-system, BlinkMacSystemFont, 'Hir
         <button class="btn-stop" id="noon-btn-stop" onclick="stopNoonTimer()" style="display:none"><i class="ti ti-player-stop"></i> 完了！</button>
         <button onclick="resetNoonTimer()"><i class="ti ti-refresh"></i> リセット</button>
       </div>
-    </div>
-    <div class="reward-box">
-      <div class="reward-title">
-        <span>❤️ ご褒美ハート</span>
-        <span id="heart-count-label" style="font-size:13px;font-weight:500;color:#993556"></span>
-      </div>
-      <div class="hearts" id="hearts-display"></div>
-      <div class="reward-goal-row">
-        <label>目標:</label>
-        <input type="number" id="goal-hearts" value="10" min="1" max="50" onchange="updateHeartGoal()">
-        <label>個で</label>
-        <input type="text" id="reward-text" value="好きなスイーツ🍰" onchange="saveRewardGoal()">
-      </div>
-      <div class="goal-progress-text" id="goal-progress-text"></div>
     </div>
     <div class="divider"></div>
     <div class="section-label" style="margin-bottom:10px">昼のTODO</div>
@@ -276,6 +263,20 @@ body { background: #f5f4f0; font-family: -apple-system, BlinkMacSystemFont, 'Hir
       <div class="stat-card"><div class="stat-num" id="stat-wins">0</div><div class="stat-label">今週の達成</div></div>
       <div class="stat-card"><div class="stat-num" id="stat-hearts">0 ❤️</div><div class="stat-label">貯まったハート</div></div>
     </div>
+    <div class="reward-box">
+      <div class="reward-title">
+        <span>❤️ ご褒美ハート</span>
+        <span id="heart-count-label" style="font-size:13px;font-weight:500;color:#993556"></span>
+      </div>
+      <div class="hearts" id="hearts-display"></div>
+      <div class="reward-goal-row">
+        <label>目標:</label>
+        <input type="number" id="goal-hearts" value="10" min="1" max="50" onchange="updateHeartGoal()">
+        <label>個で</label>
+        <input type="text" id="reward-text" value="好きなスイーツ🍰" onchange="saveRewardGoal()">
+      </div>
+      <div class="goal-progress-text" id="goal-progress-text"></div>
+    </div>
     <div class="section-label" style="margin-bottom:10px">今週の記録</div>
     <div class="hist-list" id="history-list"></div>
   </div>
@@ -288,7 +289,7 @@ let ST = JSON.parse(localStorage.getItem('hwApp5') || 'null') || {
 };
 function save() { try { localStorage.setItem('hwApp5', JSON.stringify(ST)); } catch(e){} }
 
-const MORNING_TASKS = ['宿題check','炊飯器set','洗濯回す','食洗機空ける','水筒','パパ弁当','パパ🍞','のん弁当'];
+const MORNING_TASKS = ['宿題check','炊飯器set','洗濯回す','食洗機空ける','水筒','パパ弁当','パパ🍞','のん弁当','🚲移動して新聞'];
 let mT = { interval:null, goalSec:30*60, running:false, startTime:null };
 let nT = { interval:null, goalSec:22*60, running:false, startTime:null, task:'洗濯干す' };
 let eT = { interval:null, goalSec:30*60, running:false, startTime:null };
@@ -378,7 +379,7 @@ function timerRestore(t, prefix, taskKey) {
 /* === Morning Timer === */
 function updateMorningGoal(){const v=parseInt(document.getElementById('morning-goal-slider').value);mT.goalSec=v*60;document.getElementById('morning-goal-display').textContent=v+'分';if(!mT.running)document.getElementById('morning-timer-status').textContent='目標: '+v+'分以内';}
 function startMorningTimer(){timerStart(mT,'morning');}
-function stopMorningTimer(){const all=ST.morningTodos.filter(x=>x.date===todayKey());timerStop(mT,'morning','朝の家事',{todoTotal:all.length,todoDone:all.filter(x=>x.done).length});}
+function stopMorningTimer(){timerStop(mT,'morning','朝の家事');}
 function resetMorningTimer(){timerReset(mT,'morning');}
 
 /* === Noon Timer === */
@@ -421,7 +422,9 @@ function renderMorningTodos(){
   document.getElementById('morning-complete-banner').classList.toggle('show',all.length>0&&done===all.length);
   const list=document.getElementById('morning-todo-list');
   list.innerHTML='';
-  all.forEach(t=>{
+  // 未完了を先に、完了を後に
+  const sorted=[...all.filter(x=>!x.done),...all.filter(x=>x.done)];
+  sorted.forEach(t=>{
     const el=document.createElement('div');
     el.className='todo-item'+(t.done?' done':'');
     el.dataset.id=t.id;
@@ -523,6 +526,16 @@ function updateHeartGoal(){ST.goalHearts=parseInt(document.getElementById('goal-
 function saveRewardGoal(){ST.rewardText=document.getElementById('reward-text').value;save();renderHearts();}
 
 /* ===== HISTORY ===== */
+function deleteLog(idx){
+  // weekLogsのindexではなくST.logs全体のindexで削除
+  const now=new Date();
+  const ws=new Date(now);ws.setDate(now.getDate()-now.getDay()+weekOffset*7);ws.setHours(0,0,0,0);
+  const we=new Date(ws);we.setDate(ws.getDate()+6);
+  const weekLogs=ST.logs.filter(l=>{const ld=new Date(l.date);return ld>=ws&&ld<=we;}).slice().reverse();
+  const target=weekLogs[idx];
+  ST.logs=ST.logs.filter(l=>l!==target);
+  save();renderHistory();
+}
 function changeWeek(d){weekOffset+=d;renderHistory();}
 function renderHistory(){
   const now=new Date();
@@ -544,12 +557,11 @@ function renderHistory(){
   const weekLogs=ST.logs.filter(l=>{const ld=new Date(l.date);return ld>=ws&&ld<=we;}).slice().reverse();
   const listEl=document.getElementById('history-list');
   if(!weekLogs.length){listEl.innerHTML='<div class="empty-msg">この週の記録はありません</div>';return;}
-  listEl.innerHTML=weekLogs.map(l=>{
+  listEl.innerHTML=weekLogs.map((l,i)=>{
     const dt=new Date(l.date);
     const ts=(dt.getMonth()+1)+'/'+dt.getDate()+' '+String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');
-    let detail=ts+' ／ '+fmtTime(l.sec)+'（目標 '+fmtTime(l.goalSec)+'）';
-    if(l.task==='朝の家事'&&l.todoTotal!==undefined)detail+=' ／ チェック '+l.todoDone+'/'+l.todoTotal;
-    return '<div class="hist-item"><div class="hist-task"><div class="hist-task-name">'+l.task+'</div><div class="hist-task-detail">'+detail+'</div></div><span class="hist-badge '+(l.won?'win':'lose')+'">'+(l.won?'達成 ❤️':'惜しい！')+'</span></div>';
+    const detail=ts+' ／ '+fmtTime(l.sec)+'（目標 '+fmtTime(l.goalSec)+'）';
+    return '<div class="hist-item"><div class="hist-task"><div class="hist-task-name">'+l.task+'</div><div class="hist-task-detail">'+detail+'</div></div><span class="hist-badge '+(l.won?'win':'lose')+'">'+(l.won?'達成 ❤️':'惜しい！')+'</span><button class="del-btn" onclick="deleteLog('+i+')" style="opacity:1;margin-left:4px"><i class="ti ti-x"></i></button></div>';
   }).join('');
 }
 
